@@ -191,6 +191,7 @@ int compile_output(const CoinInfo *coin, const HDNode *root, TxOutputType *in, T
 	memset(out, 0, sizeof(TxOutputBinType));
 	out->amount = in->amount;
 	out->decred_script_version = in->decred_script_version;
+	out->particl_output_type = 0;
 	uint8_t addr_raw[MAX_ADDR_RAW_SIZE];
 	size_t addr_raw_len;
 
@@ -210,6 +211,24 @@ int compile_output(const CoinInfo *coin, const HDNode *root, TxOutputType *in, T
 		r += op_push(in->op_return_data.size, out->script_pubkey.bytes + r);
 		memcpy(out->script_pubkey.bytes + r, in->op_return_data.bytes, in->op_return_data.size); r += in->op_return_data.size;
 		out->script_pubkey.size = r;
+		return r;
+	}
+
+	if (in->script_type == OutputScriptType_PAYTOPARTICLDATA) {
+		// only 0 satoshi allowed for OP_RETURN
+		if (in->amount != 0) {
+			return 0; // failed to compile output
+		}
+		if (needs_confirm) {
+			layoutConfirmOpReturn(in->op_return_data.bytes, in->op_return_data.size);
+			if (!protectButton(ButtonRequestType_ButtonRequest_ConfirmOutput, false)) {
+				return -1; // user aborted
+			}
+		}
+		uint32_t r = 0;
+		memcpy(out->script_pubkey.bytes + r, in->op_return_data.bytes, in->op_return_data.size); r += in->op_return_data.size;
+		out->script_pubkey.size = r;
+		out->particl_output_type = 1;
 		return r;
 	}
 
@@ -445,7 +464,9 @@ uint32_t tx_sequence_hash(Hasher *hasher, const TxInputType *input)
 uint32_t tx_output_hash(Hasher *hasher, const TxOutputBinType *output, bool decred)
 {
 	uint32_t r = 0;
-	hasher_Update(hasher, (const uint8_t *)&output->amount, 8); r += 8;
+	if (output->particl_output_type == 0) {
+		hasher_Update(hasher, (const uint8_t *)&output->amount, 8); r += 8;
+	}
 	if (decred) {
 		uint16_t script_version = output->decred_script_version & 0xFFFF;
 		hasher_Update(hasher, (const uint8_t *)&script_version, 2); r += 2;
@@ -830,7 +851,7 @@ uint32_t tx_output_weight(const CoinInfo *coin, const TxOutputType *txoutput) {
 					   && address_check_prefix(addr_raw, coin->address_type_p2sh)) {
 				output_script_size = TXSIZE_P2SCRIPT;
 			}
-		} 
+		}
 	}
 	output_script_size += ser_length_size(output_script_size);
 
