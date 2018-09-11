@@ -308,6 +308,59 @@ int compile_output(const CoinInfo *coin, const HDNode *root, TxOutputType *in, T
 		} else {
 			return 0;
 		}
+	} else if (coin->has_address_type                                  // p2pkh256
+		&& addr_raw_len == 32 + (prefix_len = address_prefix_bytes_len(coin->address_type))
+		&& address_check_prefix(addr_raw, coin->address_type+1)) {
+		out->script_pubkey.bytes[0] = 0x76; // OP_DUP
+		out->script_pubkey.bytes[1] = 0xA8; // OP_SHA256
+		out->script_pubkey.bytes[2] = 0x20; // pushing 32 bytes
+		memcpy(out->script_pubkey.bytes + 3, addr_raw + prefix_len, 32);
+		out->script_pubkey.bytes[35] = 0x88; // OP_EQUALVERIFY
+		out->script_pubkey.bytes[36] = 0xAC; // OP_CHECKSIG
+		out->script_pubkey.size = 37;
+	} else if (coin->has_address_type                                  // p2pkh256 coldstake
+		&& addr_raw_len == 52 + (prefix_len = address_prefix_bytes_len(coin->address_type))
+		&& address_check_prefix(addr_raw, coin->address_type+2)) {
+		out->script_pubkey.bytes[0] = 0xb8; // OP_ISCOINSTAKE
+		out->script_pubkey.bytes[1] = 0x63; // OP_IF
+
+		out->script_pubkey.bytes[2] = 0x76; // OP_DUP
+		out->script_pubkey.bytes[3] = 0xA9; // OP_HASH_160
+		out->script_pubkey.bytes[4] = 0x14; // pushing 20 bytes
+		memcpy(out->script_pubkey.bytes + 5, addr_raw + prefix_len, 20);
+		out->script_pubkey.bytes[25] = 0x88; // OP_EQUALVERIFY
+		out->script_pubkey.bytes[26] = 0xAC; // OP_CHECKSIG
+
+		out->script_pubkey.bytes[27] = 0x67; // OP_ELSE
+
+		out->script_pubkey.bytes[28] = 0x76; // OP_DUP
+		out->script_pubkey.bytes[29] = 0xA8; // OP_SHA256
+		out->script_pubkey.bytes[30] = 0x20; // pushing 32 bytes
+		memcpy(out->script_pubkey.bytes + 31, addr_raw + prefix_len + 20, 32);
+		out->script_pubkey.bytes[63] = 0x88; // OP_EQUALVERIFY
+		out->script_pubkey.bytes[64] = 0xAC; // OP_CHECKSIG
+
+		out->script_pubkey.bytes[65] = 0x68; // OP_ENDIF
+		out->script_pubkey.size = 66;
+
+		char addr_str[96];
+		strcpy(in->address, "spd: ");
+		addr_str[95] = addr_raw[20]; // store last byte of the stakeaddr hash
+		addr_raw[20] = coin->address_type+1;
+		if (!base58_encode_check(addr_raw + 20, 33, coin->curve->hasher_base58, addr_str, sizeof(addr_str))) {
+			return 0;
+		}
+		strncat(in->address, addr_str, 8);
+
+		strcat(in->address, "... stk: ");
+		addr_str[20] = addr_str[95];
+		addr_raw[0] = coin->address_type;
+		if (!base58_encode_check(addr_raw, 21, coin->curve->hasher_base58, addr_str, sizeof(addr_str))) {
+			return 0;
+		}
+		strncat(in->address, addr_str, 8);
+		strcat(in->address, "...");
+
 	} else if (coin->bech32_prefix) {
 		int witver;
 		if (!segwit_addr_decode(&witver, addr_raw, &addr_raw_len, coin->bech32_prefix, in->address)) {
