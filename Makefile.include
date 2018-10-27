@@ -148,7 +148,7 @@ flash: $(NAME).bin
 	$(OPENOCD) -c "init; reset halt; flash write_image erase $(NAME).bin 0x8000000; exit"
 
 upload: sign
-	trezorctl firmware_update -f $(NAME).bin
+	trezorctl firmware-update -f $(NAME).bin
 
 sign: $(NAME).bin
 	$(PYTHON) ../bootloader/firmware_sign.py -f $(NAME).bin
