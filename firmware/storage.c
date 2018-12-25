@@ -112,7 +112,7 @@ static bool sessionPinCached;
 static bool sessionPassphraseCached;
 static char CONFIDENTIAL sessionPassphrase[51];
 
-#define STORAGE_VERSION 9
+#define STORAGE_VERSION 10
 
 void storage_show_error(void)
 {
@@ -175,6 +175,9 @@ bool storage_from_flash(void)
 	} else if (version <= 9) {
 		// added u2froot, unfinished_backup and auto_lock_delay_ms
 		old_storage_size = OLD_STORAGE_SIZE(auto_lock_delay_ms);
+	} else if (version <= 10) {
+		// added no_backup
+		old_storage_size = OLD_STORAGE_SIZE(no_backup);
 	}
 
 	// erase newly added fields
@@ -315,6 +318,10 @@ static void storage_commit_locked(bool update)
 			strlcpy(storageUpdate.pin, storageRom->pin, sizeof(storageUpdate.pin));
 		} else if (!storageUpdate.pin[0]) {
 			storageUpdate.has_pin = false;
+		}
+		if (!storageUpdate.has_pin_entry_on_device) {
+			storageUpdate.has_pin_entry_on_device = storageRom->has_pin_entry_on_device;
+			storageUpdate.pin_entry_on_device = storageRom->pin_entry_on_device;
 		}
 		if (!storageUpdate.has_language) {
 			storageUpdate.has_language = storageRom->has_language;
@@ -684,6 +691,17 @@ void storage_setPin(const char *pin)
 const char *storage_getPin(void)
 {
 	return storageRom->has_pin ? storageRom->pin : 0;
+}
+
+void storage_setPinEntryOnDevice(bool pin_entry_on_device)
+{
+	storageUpdate.has_pin_entry_on_device = true;
+	storageUpdate.pin_entry_on_device = pin_entry_on_device;
+}
+
+bool storage_hasPinEntryOnDevice(void)
+{
+	return storageRom->has_pin_entry_on_device && storageRom->pin_entry_on_device;
 }
 
 void session_cachePassphrase(const char *passphrase)
